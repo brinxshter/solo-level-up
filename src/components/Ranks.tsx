@@ -2,8 +2,17 @@ import { Crown, Star, Shield, Sword, Flame } from "lucide-react";
 
 const ranks = [
   {
+    rank: "👑",
+    name: "Monarque Suprême",
+    requirement: "500 jours de quêtes complétées - Le Roi des Chasseurs",
+    color: "from-red-500 via-yellow-400 to-red-500",
+    textColor: "text-yellow-300",
+    icon: Crown,
+    glow: "shadow-[0_0_50px_rgba(250,204,21,0.6)] animate-pulse",
+  },
+  {
     rank: "S",
-    name: "Rang S - Monarque",
+    name: "Rang S - Élite Suprême",
     requirement: "365 jours de quêtes complétées",
     color: "from-yellow-400 to-orange-500",
     textColor: "text-yellow-400",
@@ -36,6 +45,15 @@ const ranks = [
     textColor: "text-green-400",
     icon: Sword,
     glow: "shadow-[0_0_30px_rgba(74,222,128,0.4)]",
+  },
+  {
+    rank: "D",
+    name: "Rang D - Apprenti",
+    requirement: "7 jours de quêtes complétées",
+    color: "from-amber-600 to-amber-700",
+    textColor: "text-amber-500",
+    icon: Flame,
+    glow: "shadow-[0_0_20px_rgba(217,119,6,0.3)]",
   },
   {
     rank: "E",
