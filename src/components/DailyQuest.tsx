@@ -105,7 +105,7 @@ const DailyQuest = () => {
   const progress = (completedCount / quests.length) * 100;
 
   return (
-    <section className="py-20 relative">
+    <section id="daily-quests" className="py-20 relative">
       {/* Level Up Animation */}
       {showLevelUp && (
         <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
