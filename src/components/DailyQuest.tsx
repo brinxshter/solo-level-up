@@ -1,5 +1,6 @@
-import { Dumbbell, Footprints, Timer, Flame, CheckCircle2, Zap, TrendingUp } from "lucide-react";
+import { Dumbbell, Footprints, Timer, Flame, CheckCircle2, Zap, TrendingUp, AlertTriangle, Clock } from "lucide-react";
 import { useState, useEffect } from "react";
+import { useQuestTimer } from "@/hooks/useQuestTimer";
 
 interface Quest {
   id: number;
@@ -13,92 +14,175 @@ interface Quest {
   xpReward: number;
 }
 
-const DailyQuest = () => {
-  const [quests, setQuests] = useState<Quest[]>([
-    {
-      id: 1,
-      name: "100 Pompes",
-      description: "Renforce ton corps supérieur",
-      target: 100,
-      unit: "pompes",
-      icon: Dumbbell,
-      color: "cyan",
-      completed: false,
-      xpReward: 50,
-    },
-    {
-      id: 2,
-      name: "100 Squats",
-      description: "Développe ta puissance des jambes",
-      target: 100,
-      unit: "squats",
-      icon: Flame,
-      color: "orange",
-      completed: false,
-      xpReward: 50,
-    },
-    {
-      id: 3,
-      name: "100 Abdos",
-      description: "Forge un core d'acier",
-      target: 100,
-      unit: "abdos",
-      icon: Timer,
-      color: "purple",
-      completed: false,
-      xpReward: 50,
-    },
-    {
-      id: 4,
-      name: "10km Course",
-      description: "Augmente ton endurance",
-      target: 10,
-      unit: "km",
-      icon: Footprints,
-      color: "green",
-      completed: false,
-      xpReward: 100,
-    },
-  ]);
+const initialQuests: Quest[] = [
+  {
+    id: 1,
+    name: "100 Pompes",
+    description: "Renforce ton corps supérieur",
+    target: 100,
+    unit: "pompes",
+    icon: Dumbbell,
+    color: "cyan",
+    completed: false,
+    xpReward: 50,
+  },
+  {
+    id: 2,
+    name: "100 Squats",
+    description: "Développe ta puissance des jambes",
+    target: 100,
+    unit: "squats",
+    icon: Flame,
+    color: "orange",
+    completed: false,
+    xpReward: 50,
+  },
+  {
+    id: 3,
+    name: "100 Abdos",
+    description: "Forge un core d'acier",
+    target: 100,
+    unit: "abdos",
+    icon: Timer,
+    color: "purple",
+    completed: false,
+    xpReward: 50,
+  },
+  {
+    id: 4,
+    name: "10km Course",
+    description: "Augmente ton endurance",
+    target: 10,
+    unit: "km",
+    icon: Footprints,
+    color: "green",
+    completed: false,
+    xpReward: 100,
+  },
+];
 
+const DailyQuest = () => {
+  const [quests, setQuests] = useState<Quest[]>(initialQuests);
   const [currentXP, setCurrentXP] = useState(0);
   const [level, setLevel] = useState(1);
   const [showLevelUp, setShowLevelUp] = useState(false);
   const [xpGained, setXpGained] = useState(0);
   const [showXpPopup, setShowXpPopup] = useState(false);
+  const [initialized, setInitialized] = useState(false);
 
-  // XP needed for each level (increases progressively)
+  const {
+    formattedTime,
+    showPenalty,
+    penaltyAmount,
+    initializeTimer,
+    resetQuests,
+    saveData,
+    getStoredData,
+    isUrgent,
+    isCritical,
+  } = useQuestTimer();
+
+  // XP needed for each level
   const getXPForLevel = (lvl: number) => lvl * 100;
   const xpForCurrentLevel = getXPForLevel(level);
   const xpProgress = (currentXP / xpForCurrentLevel) * 100;
 
+  // Initialize from localStorage
+  useEffect(() => {
+    const result = initializeTimer();
+    
+    if (result === null) {
+      // First time user
+      setInitialized(true);
+      return;
+    }
+
+    if (result.shouldReset && result.applyPenalty) {
+      // Time expired and quests not completed - apply penalty
+      const { newXP, newLevel } = resetQuests(true, result.storedData.currentXP, result.storedData.level);
+      setCurrentXP(newXP);
+      setLevel(newLevel);
+      setQuests(initialQuests);
+    } else if (result.shouldReset) {
+      // Time expired but no penalty needed (all quests were done or penalty already applied)
+      const { newXP, newLevel } = resetQuests(false, result.storedData.currentXP, result.storedData.level);
+      setCurrentXP(newXP);
+      setLevel(newLevel);
+      setQuests(initialQuests);
+    } else if (result.storedData) {
+      // Restore saved state
+      setCurrentXP(result.storedData.currentXP);
+      setLevel(result.storedData.level);
+      setQuests(quests.map(q => ({
+        ...q,
+        completed: result.storedData.completedQuests.includes(q.id)
+      })));
+    }
+    
+    setInitialized(true);
+  }, []);
+
+  // Check for timer expiration
+  useEffect(() => {
+    if (!initialized) return;
+
+    const interval = setInterval(() => {
+      const stored = getStoredData();
+      if (stored) {
+        const elapsed = Date.now() - stored.startTime;
+        const remaining = 12 * 60 * 60 * 1000 - elapsed;
+        
+        if (remaining <= 0 && !stored.penaltyApplied) {
+          const allCompleted = stored.completedQuests.length >= 4;
+          const { newXP, newLevel } = resetQuests(!allCompleted, stored.currentXP, stored.level);
+          setCurrentXP(newXP);
+          setLevel(newLevel);
+          setQuests(initialQuests);
+        }
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [initialized, getStoredData, resetQuests]);
+
+  // Level up check
   useEffect(() => {
     if (currentXP >= xpForCurrentLevel) {
       setCurrentXP(currentXP - xpForCurrentLevel);
       setLevel(level + 1);
       setShowLevelUp(true);
       setTimeout(() => setShowLevelUp(false), 3000);
+      
+      // Save new level
+      saveData({ level: level + 1, currentXP: currentXP - xpForCurrentLevel });
     }
-  }, [currentXP, xpForCurrentLevel, level]);
+  }, [currentXP, xpForCurrentLevel, level, saveData]);
 
   const toggleQuest = (id: number) => {
     const quest = quests.find(q => q.id === id);
     if (!quest) return;
 
+    const newQuests = quests.map(q => 
+      q.id === id ? { ...q, completed: !q.completed } : q
+    );
+    setQuests(newQuests);
+
+    const completedIds = newQuests.filter(q => q.completed).map(q => q.id);
+    
     if (!quest.completed) {
-      // Completing quest - add XP
+      // Completing quest
       setXpGained(quest.xpReward);
       setShowXpPopup(true);
       setTimeout(() => setShowXpPopup(false), 1500);
-      setCurrentXP(prev => prev + quest.xpReward);
+      const newXP = currentXP + quest.xpReward;
+      setCurrentXP(newXP);
+      saveData({ completedQuests: completedIds, currentXP: newXP });
     } else {
-      // Uncompleting quest - remove XP
-      setCurrentXP(prev => Math.max(0, prev - quest.xpReward));
+      // Uncompleting quest
+      const newXP = Math.max(0, currentXP - quest.xpReward);
+      setCurrentXP(newXP);
+      saveData({ completedQuests: completedIds, currentXP: newXP });
     }
-
-    setQuests(quests.map(q => 
-      q.id === id ? { ...q, completed: !q.completed } : q
-    ));
   };
 
   const completedCount = quests.filter(q => q.completed).length;
@@ -106,6 +190,26 @@ const DailyQuest = () => {
 
   return (
     <section id="daily-quests" className="py-20 relative">
+      {/* Penalty Animation */}
+      {showPenalty && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none bg-destructive/20">
+          <div className="animate-scale-in text-center">
+            <div className="system-window px-12 py-8 border-2 border-destructive animate-pulse">
+              <AlertTriangle className="w-16 h-16 text-destructive mx-auto mb-4" />
+              <div className="font-orbitron text-destructive text-sm tracking-widest mb-2">
+                [ PÉNALITÉ APPLIQUÉE ]
+              </div>
+              <div className="font-orbitron text-4xl font-black text-destructive mb-2">
+                -{penaltyAmount} XP
+              </div>
+              <div className="text-muted-foreground">
+                Tu as échoué la quête quotidienne !
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Level Up Animation */}
       {showLevelUp && (
         <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
@@ -133,6 +237,45 @@ const DailyQuest = () => {
       )}
 
       <div className="container mx-auto px-6">
+        {/* Timer Display */}
+        <div className="max-w-2xl mx-auto mb-8">
+          <div className={`system-window rounded-xl p-4 flex items-center justify-between ${
+            isCritical ? 'border-destructive bg-destructive/10 animate-pulse' : 
+            isUrgent ? 'border-orange-500 bg-orange-500/10' : 
+            'border-primary/30'
+          }`}>
+            <div className="flex items-center gap-3">
+              <Clock className={`w-6 h-6 ${
+                isCritical ? 'text-destructive' : 
+                isUrgent ? 'text-orange-500' : 
+                'text-primary'
+              }`} />
+              <div>
+                <div className="font-orbitron text-xs text-muted-foreground tracking-widest">
+                  TEMPS RESTANT
+                </div>
+                <div className={`font-orbitron text-2xl font-bold ${
+                  isCritical ? 'text-destructive' : 
+                  isUrgent ? 'text-orange-500' : 
+                  'text-primary text-glow'
+                }`}>
+                  {formattedTime}
+                </div>
+              </div>
+            </div>
+            <div className="text-right">
+              <div className="font-orbitron text-xs text-muted-foreground">
+                {completedCount}/4 QUÊTES
+              </div>
+              <div className={`font-orbitron text-sm ${
+                completedCount === 4 ? 'text-green-500' : 'text-muted-foreground'
+              }`}>
+                {completedCount === 4 ? '✓ MISSION COMPLÈTE' : 'EN COURS...'}
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Level & XP Display */}
         <div className="max-w-2xl mx-auto mb-12">
           <div className="system-window rounded-xl p-6 animate-pulse-glow">
@@ -190,7 +333,7 @@ const DailyQuest = () => {
             <span className="text-primary text-glow ml-3">Sung Jin-Woo</span>
           </h2>
           <p className="text-muted-foreground text-lg max-w-xl mx-auto">
-            Complète les 4 exercices quotidiens pour débloquer ton potentiel caché
+            Complète les 4 exercices en moins de 12h pour éviter la pénalité
           </p>
         </div>
 
@@ -289,7 +432,7 @@ const DailyQuest = () => {
         <div className="mt-12 text-center">
           <div className="system-window inline-block px-8 py-4 border-destructive/30">
             <p className="text-destructive font-orbitron text-sm">
-              ⚠️ ATTENTION : L'échec de la quête entraînera une pénalité
+              ⚠️ ATTENTION : L'échec de la quête en 12h entraîne une perte de 50% XP + 50 points
             </p>
           </div>
         </div>
